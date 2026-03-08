@@ -30,6 +30,7 @@ def get_llm(
     *,
     provider: Optional[str] = None,
     api_key: Optional[str] = None,
+    api_keys: Optional[dict[str, str]] = None,
     base_url: Optional[str] = None,
     base_urls: Optional[dict[str, str]] = None,
 ) -> BaseLLM:
@@ -39,7 +40,8 @@ def get_llm(
     - model: Model name (e.g. "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro", "grok-2", "llama-3-70b-8192").
     - config: Optional LLMConfig. If not provided, one is built from the other kwargs.
     - provider: Force provider ("openai", "anthropic", "gemini", "groq", "xai", "custom"). If None, inferred from model.
-    - api_key: Override API key (otherwise from config or env).
+    - api_key: Override API key for this client (otherwise from api_keys, config, or env).
+    - api_keys: Map provider -> API key (e.g. {"openai": "...", "anthropic": "..."}), useful for a shared global config.
     - base_url: Override base URL for this client (for custom/OpenAI-compatible endpoints).
     - base_urls: Map provider or model name -> base URL (e.g. {"custom": "https://my-gateway.com/v1"}).
 
@@ -48,6 +50,7 @@ def get_llm(
     cfg = config or LLMConfig()
     cfg = LLMConfig(
         api_key=api_key if api_key is not None else cfg.api_key,
+        api_keys={**(cfg.api_keys or {}), **(api_keys or {})},
         base_url=base_url if base_url is not None else cfg.base_url,
         base_urls={**(cfg.base_urls or {}), **(base_urls or {})},
         provider=provider if provider is not None else cfg.provider,

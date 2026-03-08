@@ -32,13 +32,21 @@ class LLMConfig:
     """
     Configuration for LLM clients.
 
-    - API keys: pass explicitly or rely on env (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).
+    - API keys: pass explicitly, via api_keys mapping, or rely on env (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).
     - base_url: override for the current model's provider (single override).
     - base_urls: map provider or model name -> base URL for overrides (e.g. for custom endpoints).
     """
 
     api_key: Optional[str] = None
     """Explicit API key. If None, resolved from provider's env var."""
+
+    api_keys: dict[str, str] = field(default_factory=dict)
+    """
+    Map of provider name -> API key.
+    Useful for a shared, global config that holds keys for multiple providers
+    (e.g. {"openai": "...", "anthropic": "..."}). `api_key` (single) still
+    takes precedence when set on this config.
+    """
 
     base_url: Optional[str] = None
     """Override base URL for this client (takes precedence over base_urls)."""
@@ -57,9 +65,11 @@ class LLMConfig:
     extra: dict[str, Any] = field(default_factory=dict)
 
     def get_api_key(self, provider: str) -> Optional[str]:
-        """Resolve API key: explicit first, then env for that provider."""
+        """Resolve API key: explicit first, then api_keys[provider], then env."""
         if self.api_key is not None:
             return self.api_key
+        if provider in self.api_keys:
+            return self.api_keys[provider]
         env_key = DEFAULT_ENV_KEYS.get(provider, "OPENAI_API_KEY")
         return os.environ.get(env_key)
 

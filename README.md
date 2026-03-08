@@ -88,8 +88,8 @@ By default, API keys are read from the environment. Use standard names so you ca
 | OpenAI   | `OPENAI_API_KEY`     |
 | Anthropic| `ANTHROPIC_API_KEY`  |
 | Gemini   | `GOOGLE_API_KEY`     |
-| xAI      | `XAI_API_KEY`       |
-| Groq     | `GROQ_API_KEY`      |
+| xAI      | `XAI_API_KEY`        |
+| Groq     | `GROQ_API_KEY`       |
 | Custom   | `OPENAI_API_KEY` (or pass explicitly) |
 
 Override in code:
@@ -97,11 +97,27 @@ Override in code:
 ```python
 from llm_blanket import get_llm, LLMConfig
 
+# Single API key for this client
 config = LLMConfig(api_key="sk-...")
 llm = get_llm("gpt-4o", config=config)
 
 # Or one-off
 llm = get_llm("gpt-4o", api_key="sk-...")
+
+# Or a shared config with keys for multiple providers
+shared_config = LLMConfig(
+    api_keys={
+        "openai": "sk-openai-...",
+        "anthropic": "sk-anthropic-...",
+        "gemini": "sk-gemini-...",
+    }
+)
+
+openai_llm = get_llm("gpt-4o", config=shared_config)
+anthropic_llm = get_llm("claude-3-5-sonnet-20241022", config=shared_config)
+gemini_llm = get_llm("gemini-1.5-pro", config=shared_config)
+
+# api_key (single) still takes precedence if set on the config or call
 ```
 
 ### Base URL and URL mapping
