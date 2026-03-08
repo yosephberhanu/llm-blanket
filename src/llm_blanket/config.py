@@ -32,34 +32,49 @@ class LLMConfig:
     """
     Configuration for LLM clients.
 
-    - API keys: pass explicitly, via api_keys mapping, or rely on env (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY).
-    - base_url: override for the current model's provider (single override).
-    - base_urls: map provider or model name -> base URL for overrides (e.g. for custom endpoints).
+    Resolution model:
+    - **Per-model provider**: `model_provider` maps model name -> provider. If a model
+      is in the map, that provider is used; otherwise the provider is inferred from the
+      model name (e.g. gpt-* -> openai, claude-* -> anthropic). You can also force
+      a single provider for the current call via `provider`.
+    - **Per-provider overrides**: For each provider you can override:
+      - **URL**: `base_urls[provider]` (e.g. base_urls["openai"]). If not set, the
+        default base URL for that provider is used.
+      - **API key**: `api_keys[provider]`. If not set, the key is read from the
+        environment (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY — see DEFAULT_ENV_KEYS).
+    - **Single-call overrides**: `api_key`, `base_url`, and `provider` override for
+      the current client/call when set.
     """
 
-    api_key: Optional[str] = None
-    """Explicit API key. If None, resolved from provider's env var."""
-
-    api_keys: dict[str, str] = field(default_factory=dict)
+    model_provider: dict[str, str] = field(default_factory=dict)
     """
-    Map of provider name -> API key.
-    Useful for a shared, global config that holds keys for multiple providers
-    (e.g. {"openai": "...", "anthropic": "..."}). `api_key` (single) still
-    takes precedence when set on this config.
-    """
-
-    base_url: Optional[str] = None
-    """Override base URL for this client (takes precedence over base_urls)."""
-
-    base_urls: dict[str, str] = field(default_factory=dict)
-    """
-    Map of provider name or model name -> base URL.
-    E.g. {"openai": "https://my-proxy.com/v1", "gpt-4": "https://custom.com/v1"}.
-    Used when base_url is not set; exact model match wins, then provider match.
+    Map of model name -> provider (e.g. {"llama-3-70b-8192": "groq", "my-model": "custom"}).
+    If the model is in this map, that provider is used; otherwise provider is inferred
+    from the model name.
     """
 
     provider: Optional[str] = None
-    """Force provider (openai, anthropic, gemini, groq, xai, custom). If None, inferred from model."""
+    """Force provider for this config/call (openai, anthropic, gemini, groq, xai, custom). Overrides model_provider and inference."""
+
+    api_key: Optional[str] = None
+    """Single API key override for this client. If set, overrides api_keys[provider] and env."""
+
+    api_keys: dict[str, str] = field(default_factory=dict)
+    """
+    Per-provider API key overrides: provider name -> API key.
+    E.g. {"openai": "sk-...", "anthropic": "sk-ant-..."}. If not set for a provider,
+    the key is read from the environment (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.).
+    """
+
+    base_url: Optional[str] = None
+    """Single base URL override for this client. Overrides base_urls for this call."""
+
+    base_urls: dict[str, str] = field(default_factory=dict)
+    """
+    Per-provider (or per-model) base URL overrides: provider or model name -> base URL.
+    E.g. {"openai": "https://my-proxy.com/v1", "groq": "https://api.groq.com/openai/v1"}.
+    If not set for a provider, the default base URL for that provider is used.
+    """
 
     # Optional provider-specific options (extensible)
     extra: dict[str, Any] = field(default_factory=dict)

@@ -29,6 +29,7 @@ def get_llm(
     config: Optional[LLMConfig] = None,
     *,
     provider: Optional[str] = None,
+    model_provider: Optional[dict[str, str]] = None,
     api_key: Optional[str] = None,
     api_keys: Optional[dict[str, str]] = None,
     base_url: Optional[str] = None,
@@ -37,27 +38,35 @@ def get_llm(
     """
     Create an LLM instance for the given model.
 
-    - model: Model name (e.g. "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro", "grok-2", "llama-3-70b-8192").
-    - config: Optional LLMConfig. If not provided, one is built from the other kwargs.
-    - provider: Force provider ("openai", "anthropic", "gemini", "groq", "xai", "custom"). If None, inferred from model.
-    - api_key: Override API key for this client (otherwise from api_keys, config, or env).
-    - api_keys: Map provider -> API key (e.g. {"openai": "...", "anthropic": "..."}), useful for a shared global config.
-    - base_url: Override base URL for this client (for custom/OpenAI-compatible endpoints).
-    - base_urls: Map provider or model name -> base URL (e.g. {"custom": "https://my-gateway.com/v1"}).
+    Provider resolution (first wins): explicit provider > config.model_provider[model] > infer from model name.
+    Per-provider URL and API key come from config (base_urls, api_keys); if not set, defaults are used
+    (default base URL per provider, API keys from .env: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.).
 
-    For Groq models (e.g. llama-3-70b-8192), pass provider="groq" if not using a config that sets provider.
+    - model: Model name (e.g. "gpt-4o", "claude-3-5-sonnet-20241022", "gemini-1.5-pro", "llama-3-70b-8192").
+    - config: Optional LLMConfig (model_provider, api_keys, base_urls, etc.). If not provided, one is built from kwargs.
+    - provider: Force provider for this call. Overrides model_provider and inference.
+    - model_provider: Map model name -> provider (e.g. {"llama-3-70b-8192": "groq"}). Merged with config.model_provider.
+    - api_key / api_keys: API key overrides (single or per-provider). Unset keys fall back to .env.
+    - base_url / base_urls: Base URL overrides (single or per-provider). Unset URLs use default per provider.
     """
     cfg = config or LLMConfig()
+    _model_provider = getattr(cfg, "model_provider", None) or {}
     cfg = LLMConfig(
+        model_provider={**_model_provider, **(model_provider or {})},
+        provider=provider if provider is not None else cfg.provider,
         api_key=api_key if api_key is not None else cfg.api_key,
         api_keys={**(cfg.api_keys or {}), **(api_keys or {})},
         base_url=base_url if base_url is not None else cfg.base_url,
         base_urls={**(cfg.base_urls or {}), **(base_urls or {})},
-        provider=provider if provider is not None else cfg.provider,
         extra=cfg.extra,
     )
 
-    resolved_provider = infer_provider(model, cfg.provider)
+    # Resolve provider: explicit > model_provider[model] > infer from model name
+    resolved_provider = cfg.provider
+    if resolved_provider is None and cfg.model_provider and model in cfg.model_provider:
+        resolved_provider = cfg.model_provider[model]
+    if resolved_provider is None:
+        resolved_provider = infer_provider(model, None)
 
     if resolved_provider == "anthropic":
         return _get_anthropic(model, cfg)

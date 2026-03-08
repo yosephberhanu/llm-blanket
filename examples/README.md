@@ -12,4 +12,4 @@ python examples/config_and_url_override.py
 |--------|-------------|
 | `quickstart.py` | Create an LLM, call `invoke()` with a user message. |
 | `streaming.py` | Stream response tokens with `invoke_stream()`. |
-| `config_and_url_override.py` | Use `LLMConfig`, `base_urls`, `base_url`, and `provider="groq"`. |
+| `config_and_url_override.py` | Per-model provider (`model_provider`), per-provider URL and API key; .env fallback. |

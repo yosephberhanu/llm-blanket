@@ -3,9 +3,8 @@
 Unified Python library for LLM APIs: **OpenAI**, **Anthropic**, **Gemini**, **xAI (Grok)**, **Groq**, and **custom OpenAI-compatible** endpoints.
 
 - Single interface: specify a model, get an LLM instance, call `invoke(messages)`.
-- Provider inferred from model name (e.g. `gpt-4o` → OpenAI, `claude-3-5-sonnet` → Anthropic) or set explicitly.
-- Base URL overrides via config or `base_url` / `base_urls` for custom or proxy endpoints.
-- API keys from environment (LangChain/AutoGen-style) or passed in config.
+- **Per-model provider**: specify which provider backs each model via `model_provider`; if not set, provider is inferred from model name (e.g. `gpt-4o` → OpenAI, `claude-*` → Anthropic).
+- **Per-provider overrides**: override base URL and API key per provider in config; if not set, default URLs and API keys from `.env` are used.
 
 ## Install
 
@@ -79,9 +78,29 @@ Streaming is supported for OpenAI (and OpenAI-compatible), Anthropic, and Gemini
 
 ## Configuration
 
-### API keys
+### 1. Per-model provider
 
-By default, API keys are read from the environment. Use standard names so you can reuse `.env` or shell exports:
+Specify which provider backs each model with `model_provider` (model name → provider). If a model is not in the map, the provider is inferred from the model name (e.g. `gpt-*` → openai, `claude-*` → anthropic). Groq models like `llama-3-70b-8192` have no unique prefix, so put them in the map or pass `provider="groq"` for that call.
+
+```python
+from llm_blanket import get_llm, LLMConfig
+
+config = LLMConfig(
+    model_provider={
+        "llama-3-70b-8192": "groq",
+        "mixtral-8x7b-32768": "groq",
+        "my-custom-model": "custom",
+    }
+)
+llm = get_llm("llama-3-70b-8192", config=config)  # uses groq
+llm = get_llm("gpt-4o", config=config)            # inferred openai
+```
+
+### 2. Per-provider URL and API key
+
+For each provider you can override the base URL and API key. If you don't, the library uses its default base URL for that provider and the API key from the environment.
+
+**Environment variables (default API keys):**
 
 | Provider | Environment variable |
 |----------|----------------------|
@@ -90,63 +109,29 @@ By default, API keys are read from the environment. Use standard names so you ca
 | Gemini   | `GOOGLE_API_KEY`     |
 | xAI      | `XAI_API_KEY`        |
 | Groq     | `GROQ_API_KEY`       |
-| Custom   | `OPENAI_API_KEY` (or pass explicitly) |
+| Custom   | `OPENAI_API_KEY` (or set in config) |
 
-Override in code:
-
-```python
-from llm_blanket import get_llm, LLMConfig
-
-# Single API key for this client
-config = LLMConfig(api_key="sk-...")
-llm = get_llm("gpt-4o", config=config)
-
-# Or one-off
-llm = get_llm("gpt-4o", api_key="sk-...")
-
-# Or a shared config with keys for multiple providers
-shared_config = LLMConfig(
-    api_keys={
-        "openai": "sk-openai-...",
-        "anthropic": "sk-anthropic-...",
-        "gemini": "sk-gemini-...",
-    }
-)
-
-openai_llm = get_llm("gpt-4o", config=shared_config)
-anthropic_llm = get_llm("claude-3-5-sonnet-20241022", config=shared_config)
-gemini_llm = get_llm("gemini-1.5-pro", config=shared_config)
-
-# api_key (single) still takes precedence if set on the config or call
-```
-
-### Base URL and URL mapping
-
-Override the base URL for a given client (e.g. custom or proxy):
+**Override in config:**
 
 ```python
-# Single override for this client
-llm = get_llm("gpt-4o", base_url="https://my-gateway.com/v1")
-
-# Or via config with a mapping (e.g. per provider or per model)
 config = LLMConfig(
+    model_provider={"llama-3-70b-8192": "groq"},
     base_urls={
         "openai": "https://my-openai-proxy.com/v1",
-        "gpt-4o": "https://special-endpoint.com/v1",
-    }
+        "groq": "https://api.groq.com/openai/v1",
+    },
+    api_keys={
+        "openai": "sk-openai-...",
+        "anthropic": "sk-ant-...",
+    },
 )
-llm = get_llm("gpt-4o", config=config)
+openai_llm = get_llm("gpt-4o", config=config)
+groq_llm = get_llm("llama-3-70b-8192", config=config)
+anthropic_llm = get_llm("claude-3-5-sonnet-20241022", config=config)
 ```
 
-Resolution order: `base_url` (direct) > `base_urls[model]` > `base_urls[provider]` > default URL for that provider.
+Single-call overrides: `provider`, `api_key`, and `base_url` still override for that call only.
 
-### Forcing provider
-
-Use when the model name doesn’t indicate the provider (e.g. Groq’s `llama-3-70b-8192`):
-
-```python
-llm = get_llm("llama-3-70b-8192", provider="groq")
-```
 
 ## Supported models / providers
 
@@ -156,8 +141,8 @@ llm = get_llm("llama-3-70b-8192", provider="groq")
 | Anthropic | `claude-*`         | Uses Anthropic Messages API |
 | Gemini    | `gemini-*`         | Uses Google GenAI SDK   |
 | xAI       | `grok*`, `grok-*`  | OpenAI-compatible       |
-| Groq      | Set `provider="groq"` | Models like `llama-3-70b-8192`; OpenAI-compatible |
-| Custom    | Set `provider="custom"` and `base_url` | Any OpenAI-compatible endpoint |
+| Groq      | Set in `model_provider` or `provider="groq"` | Models like `llama-3-70b-8192`; OpenAI-compatible |
+| Custom    | Set in `model_provider` or `provider="custom"` and `base_url` | Any OpenAI-compatible endpoint |
 
 ## Extensibility
 
@@ -165,21 +150,22 @@ llm = get_llm("llama-3-70b-8192", provider="groq")
 - **Provider-specific options**: Pass extra kwargs to `invoke()` (e.g. `temperature`, `max_tokens`); they are forwarded to the underlying API. Use `LLMConfig(extra={...})` for client-level options.
 - **Custom backends**: Implement `BaseLLM` (see `llm_blanket.base`) and register or construct your backend explicitly; the factory is focused on the built-in providers.
 
-## Example: multiple providers and URL overrides
+## Example: multiple providers with per-model and per-provider config
 
 ```python
 from llm_blanket import get_llm, LLMConfig, Message
 
-# Shared URL mapping (e.g. from app config)
+# Per-model provider + per-provider URL (and optionally api_keys; else from .env)
 config = LLMConfig(
+    model_provider={"llama-3-70b-8192": "groq", "mixtral-8x7b-32768": "groq"},
     base_urls={
         "openai": "https://my-proxy.com/openai/v1",
         "groq": "https://api.groq.com/openai/v1",
-    }
+    },
 )
 
 openai_llm = get_llm("gpt-4o-mini", config=config)
-groq_llm = get_llm("llama-3-70b-8192", config=config, provider="groq")
+groq_llm = get_llm("llama-3-70b-8192", config=config)
 
 for llm in [openai_llm, groq_llm]:
     r = llm.invoke([Message("user", "Say hi in one word.")])
